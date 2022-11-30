@@ -1,0 +1,61 @@
+---
+layout: post
+title:  "TCP/IP"
+categories: network
+date:  2022-11-29 15:58:21 +0900
+---
+
+<!-- - [TCP/IP 란](#tcpip-란)
+- [IP 란](#ip-란)
+- [TCP 스트림](#tcp-스트림)
+- [TCP 성능에 대한 고려](#tcp-성능에-대한-고려)
+
+ -->
+
+# TCP/IP 란
+
+TCP, Transmission Control Protocol, 전송 제어 규약
+
+**패킷 교환 네트워크 프로토콜의 계층화**된 집합이다. [HTTP]({% post_url 2022-11-29-http %})는 서버와 클라이언트 간의 통신 규약이라면, 이를 직접 전송하는데 사용되는 규약이 `TCP`/`IP` 라고 볼 수 있다.
+
+ 클라이언트와 서버는 `TCP`/`IP` 커넥션을 맺을 수 있으며, 일단 커넥션이 맺어지면 주고받는 메시지들은 손상되지 않으며, 순서가 바뀌지 않고, 조각나지 않은채로 안전하게 전달될 것이 보장된다. 
+
+# IP 란
+
+`TCP`와 `IP`는 OSI  7Layer 에서 Layer3, Layer4 와 같이 각각 다른 레이어에 속한다. `TCP`는 `IP` (Internet Protocol) 위에서 동작하는 프로토콜이다. `IP`에선 패킷 전달 여부와 순서를 보장해 주지 않는다. 그렇다면 IP의 역할은 무엇일까?  
+
+> The Internet Protocol (IP) is a protocol, or set of rules, for routing and addressing packets of data so that they can travel across networks and arrive at the correct destination
+
+ `IP`란 패킷을 전송하고, 네트워크를 통해 정확한 목적지로 라우팅 하는데 필요한 규칙들의 집합이다.
+  
+ 이는 패킷을 전송하도록, 그리고 정확한 목적지를 찾을 수 있도록 보장해주지만, `TCP` 와 함께하지 않는다면, 이 전달이 실패할 수 있고, 순서가 잘못될 수 있다.
+
+사실, 꼭 TCP와 IP가 한 세트일 필요는 없다. 하지만, HTTP, FTP, SMTP 등 TCP를 기반으로 한 많은 수의 애플리케이션 프로토콜들이 IP위에서 동작하기 때문에 주로 묶어서 `TCP`/`IP` 라고 부르는 것이다.
+
+# TCP 스트림
+![3-way-handshake](/asset/images/packet-and-segment.svg){:class="img-responsive"}
+
+TCP는 `segement`라는 단위로 데이터 스트림을 잘게 나누고, 이를 `IP packet` 이라고 불리는 봉투에 담아 인터넷을 통해 데이터를 전송한다. 이 모든 과정은 HTTP 프로그래머에게 보이지 않는다.
+
+
+# TCP 성능에 대한 고려
+
+서버가 너무 많은 데이터를 받는 것이 아닌이상, 대부분의 HTTP 지연은 TCP 네트워크 지연 때문에 발생한다. 지연과 관련된 TCP 성능과 관련한 중요 요소 몇가지를 살펴보자.
+
+1. TCP 커넥션 핸드셰이크 지연 
+  - 3-way handshake
+  ![3-way-handshake](/asset/images/3-way-handshake.jpg){:class="img-responsive"}
+  
+    TCP 에선 위와 같이 세번의 과정을 통해 `SYN`, `ACK` 플래그를 주고 받으며 노드간의 커넥션을 맺는다. 이는 신뢰성 있는 데이터 전송 및 순서 보장에 필수적인 동작이지만, HTTP 트랜잭션이 아주 큰 데이터를 주고받지 않는 이상, 이 과정 자체가 눈에 띄는 지연을 발생시킨다.
+  <br/>
+  <br/>
+
+2. 확인 응답 지연 <br/><br/> 
+  각 TCP segment 수신자는 데이터를 온전히 받았다면, 작은 확인응답 패킷을 송신자에게 돌려보낸다.
+
+   해당 패킷은 크기가 작기 때문에, TCP는 네트워크를 보다 효율적으로 사용하기 위하여 같은 방향으로 향하는 IP 패킷에 미리 마련된 `piggyback` 을 위한 공간에 이를 포함시킨다. 그 빈도를 높이기 위해, 송출할 확인응답을 특정 시간 (보통 0.1~0.2초) 버퍼에 저장해 두며, 편승시키기 위한 데이터 패킷을 찾는 `확인 응답 지연` 알고리즘을 구현한다.
+
+   하지만, 요청과 응답 두가지로 이루어지는 HTTP 동작 방식은 확인 응답이 piggyback 될 기회를 감소 시키고, 오히려 확인 지연 알고리즘으로 인한 지연이 발생하게 된다.
+
+3. slow start <br/><br/>
+  TCP의 데이터 전송 속도는 유동적이다. 급작스러운 부하와 혼잡을 방지하기 위해 TCP는 처음 커넥션의 최대 속도를 제한하고, 데이터가 성공적으로 전송됨에 따라 속도 제한을 높여나간며, 이를 `slow start` 라고 칭한다. 이 **혼잡제어 기능** 때문에, 새로운 커넥션은 느릴 수밖에 없고, 이 문제를 개선하고자 이미 존재하는 커넥션을 재사용하는 **HTTP의 지속 커넥션이** 기능이 등장했다고 한다. 

@@ -4,3 +4,8 @@
 
 layout: home
 ---
+
+```
+bundle exec jekyll serve --livereload
+```
+
