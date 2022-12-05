@@ -1,6 +1,5 @@
 ---
 # Feel free to add content and custom Front Matter to this file.
-https://60devs.com/adding-comments-to-your-jekyll-blog.html
 # To modify the layout, see https://jekyllrb.com/docs/themes/#overriding-theme-defaults
 
 layout: home

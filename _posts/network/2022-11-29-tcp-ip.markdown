@@ -3,6 +3,7 @@ layout: post
 title:  "TCP/IP"
 categories: network
 date:  2022-11-29 15:58:21 +0900
+comments_id: 3
 ---
 
 - [TCP/IP 란](#tcpip-란)

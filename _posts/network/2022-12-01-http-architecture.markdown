@@ -3,6 +3,7 @@ layout: post
 title:  "HTTP Architecture"
 categories: network
 date:  2022-12-01 22:03:02 +0900
+comments_id: 4
 ---
 
 - [웹 서버](#웹-서버)
