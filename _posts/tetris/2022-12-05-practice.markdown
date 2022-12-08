@@ -1,0 +1,255 @@
+---
+layout: post
+title:  "Practice"
+categories: tetris
+date:  2022-12-07 23:44:05 +0900
+---
+
+socket programming 을 위해, tetris client 와 server 모두 C/C++ 로 구현할 계획입니다. 관련하여, 간단한 실습을 통해 필요한 지식을 학습해 보고자 합니다. 
+
+<br/>
+
+- [What is socket programming?](#what-is-socket-programming)
+    - [State diagram for server and client model](#state-diagram-for-server-and-client-model)
+    - [Socket creation](#socket-creation)
+    - [Setsockopt](#setsockopt)
+    - [Bind](#bind)
+    - [Listen](#listen)
+    - [Accept](#accept)
+    - [Connect (Stages for Client)](#connect-stages-for-client)
+- [Implementation](#implementation)
+    - [server.c](#serverc)
+- [References](#references)
+
+
+<br/>
+## What is socket programming?
+
+Socket programming is a way of connecting two nodes on a network to communicate with each other. One socket(node) listens on a particular port at an IP, while the other socket reaches out to the other to form a connection. The server forms the listener socket while the client reaches out to the server.
+
+
+<br/>
+#### State diagram for server and client model
+
+![](https://media.geeksforgeeks.org/wp-content/uploads/20220330131350/StatediagramforserverandclientmodelofSocketdrawio2-448x660.png)
+
+위 diagram 을 완벽히 이해할 필요가 있어 보입니다.
+
+<br/>
+#### Socket creation
+
+```c++
+int sockfd = socket(domain, type, protocol)
+```
+- sockfd: socket descriptor, an integer (like a file-handle)
+- domain: integer, specifies communication domain. We use AF_ LOCAL as defined in the POSIX standard for communication between processes on the same host. For communicating between processes on different hosts connected by IPV4, we use AF_INET and AF_I NET 6 for processes connected by IPV6.
+- type: communication type<br/>
+SOCK_STREAM: TCP(reliable, connection oriented)<br/>
+SOCK_DGRAM: UDP(unreliable, connectionless)
+- protocol: Protocol value for Internet Protocol(IP), which is 0. This is the same number which appears on protocol field in the IP header of a packet.(man protocols for more details)
+
+<br/>
+#### Setsockopt
+This helps in manipulating options for the socket referred by the file descriptor sockfd. This is completely optional, but it helps in reuse of address and port. Prevents error such as: “address already in use”.
+
+```c++
+int setsockopt(int sockfd, int level, int optname,  const void *optval, socklen_t optlen);
+```
+- sockfd: socket descriptor, an integer (like a file-handle)
+- level: 소켓의 레벨로 어떤 레벨의 소켓정보를 가져오거나 변경할 것인지를 명시합니다. 보통 **SOL_SOCKET**와 **IPPROTO_TCP** 중 하나를 사용합니다.
+- optname: 설정을 위한 소켓옵션의 번호
+- optval: 설정값을 저장하기 위한 버퍼의 포인터
+- optlen: optval 버퍼의 크기
+
+<br/>
+**SOL_SOCKET** 레벨에서 사용할 수 있는 옵션과 데이형은 다음과 같습니다.
+<table><thead><tr><td align="center"> 옵션값          </td><td align="center"> 데이터형        </td><td align="center"> 설명                                          </td></tr></thead><tbody>
+<tr><td align="center"> SO_BROADCAST    </td><td align="center"> BOOL            </td><td align="center"> 브로드캐스트 메시지 전달이 가능하도록 한다.  </td></tr>
+<tr><td align="center"> SO_DEBUG        </td><td align="center"> BOOL            </td><td align="center"> 디버깅 정보를 레코딩 한다.                    </td></tr>
+<tr><td align="center"> SO_DONTLINGER  </td><td align="center"> BOOL            </td><td align="center"> 소켓을 닫을때 보내지 않은 데이터를 보내기 위해서 블럭되지 않도록 한다. </td></tr>
+<tr><td align="center"> SO_DONTROUTE    </td><td align="center"> BOOL            </td><td align="center"> 라우팅 하지 않고 직접 인터페이스로 보낸다.    </td></tr>
+<tr><td align="center"> SO_OOBINLINE   </td><td align="center"> BOOL           </td><td align="center"> OOB 데이터 전송을 설정할때, 일반 입력 큐에서 데이터를 읽을 수 있게 한다. 이 플래그를 켜면 recv(:12)나 send(:12)에서 MSG_OOB 플래그를 사용할 필요 없이 OOB 데이터를 읽을 수 있다. </td></tr>
+<tr><td align="center"> SO_GROUP_PRIORITY  </td><td align="center"> int        </td><td align="center"> 사용하지 않음  </td></tr>
+<tr><td align="center"> SO_KEEPALIVE    </td><td align="center"> BOOL            </td><td align="center"> Keepalives를 전달한다.    </td></tr>
+<tr><td align="center"> SO_LINGER      </td><td align="center"> struct LINGER  </td><td align="center"> 소켓을 닫을 때 전송되지 않은 데이터의 처리 규칙  </td></tr>
+<tr><td align="center"> SO_RCVBUF      </td><td align="center"> int            </td><td align="center"> 데이터를 수신하기 위한 버퍼공간의 명시    </td></tr>
+<tr><td align="center"> SO_REUSEADDR    </td><td align="center"> BOOL            </td><td align="center"> 이미 사용된 주소를 재사용 (bind) 하도록 한다.  </td></tr>
+<tr><td align="center"> SO_SNDBUF      </td><td align="center"> int             </td><td align="center"> 데이터 전송을 위한 버퍼공간 명시      </td></tr>
+</tbody></table>
+
+**IPPROTO_TCP** 레벨에서 사용할 수 있는 옵션과 데이터형에는 TCP_NODELAY, Nagle 알고리즘 제어가 존재합니다.
+
+**SO_REUSEADDR** 옵션을 통해 커널이 기존에 bind에 할당된 소켓자원을 프로세스가 재 사용할 수 있도록 허락하도록 만들 수 있습니다. 이는 기존 프로그램이 종료되었지만, 비정상종료된 상태로 아직 커널이 bind정보를 유지하고 있음으로 발생하는 문제를 해결해 줍니다.
+
+<br/>
+#### Bind
+
+```c++
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+```
+After the creation of the socket, the bind function binds the socket to the address and port number specified in addr(custom data structure)
+
+The **sockaddr** family of structures are designed to represent network addresses for different networking protocols. 
+
+```c++
+struct sockaddr {
+	u_short    sa_family;     // address family, 2 bytes
+	char    sa_data[14];     // IP address + Port number, 14 bytes
+};
+```
+- sa_family : 주소체계를 구분하기 위한 변수이며, 2 bytes 이다. 참고로, u_short는 unsigned short를 말한다.
+- sa_data : 실제 주소를 저장하기 위한 변수다. 14 bytes 만큼의 크기를 가진다.
+
+The **sockaddr_in** is the socket type which is used for for the Internet Protocol version four (IPv4).  It has the following members defined:
+
+```c++
+struct sockaddr_in {
+	short    sin_family;          // 주소 체계: AF_INET
+	u_short  sin_port;            // 16 비트 포트 번호, network byte order
+	struct   in_addr  sin_addr;   // 32 비트 IP 주소
+	char     sin_zero[8];         // 전체 크기를 16 비트로 맞추기 위한 dummy
+};
+
+struct  in_addr {
+	u_long  s_addr;     // 32비트 IP 주소를 저장 할 구조체, network byte order
+};
+```
+
+ The member **sin_family** must always have the value **AF_INET** for IPv4.  The
+     members **sin_port** and **sin_addr** describe the **IP address** and **IP port** to use.
+     In the case of a call to `connect(3SOCKET)` these represent the remote IP
+     address and port to which the connection is being made.  In the case of
+     `bind(3SOCKET)` these represent the IP address and port on the local host to
+     which the socket is to be bound.  In the case of `accept(3SOCKET)` these
+     represent the remote IP address and port of the machine whose connection
+     was accepted.
+
+
+<br/>
+#### Listen
+
+```c++
+int listen(int sockfd, int backlog);
+```
+
+It puts the server socket in a **passive mode**, where it waits for the client to approach the server to make a connection. The **backlog**, defines the maximum length to which the **queue** of pending connections for sockfd may grow. If a connection request arrives when the queue is full, the client may receive an error with an indication of **ECONNREFUSED**.
+
+<br/>
+#### Accept
+
+```c++
+int new_socket= accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+```
+
+It extracts the first connection request on the **queue** of pending connections for the listening socket, sockfd, creates a new connected socket, and returns a new file descriptor referring to that socket. At this point, the connection is established between client and server, and they are **ready to transfer data**.
+
+
+<br/>
+#### Connect (Stages for Client)
+
+- Socket connection: Exactly same as that of server’s socket creation
+- Connect: The connect() system call connects the socket referred to by the file descriptor sockfd to the address specified by addr. Server’s address and port is specified in addr.
+
+```c++
+int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+```
+
+<br/>
+<br/>
+## Implementation
+
+<br/>
+#### server.c
+```c
+// Server side C/C++ program to demonstrate Socket
+// programming
+#include <netinet/in.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#define PORT 8080
+int main(int argc, char const* argv[])
+{
+	int server_fd, new_socket, valread;
+	struct sockaddr_in address;
+	int opt = 1;
+	int addrlen = sizeof(address);
+	char buffer[1024] = { 0 };
+	char* hello = "Hello from server";
+
+	// Creating socket file descriptor
+	if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		perror("socket failed");
+		exit(EXIT_FAILURE);
+	}
+
+	// Forcefully attaching socket to the port 8080
+	if (setsockopt(server_fd, SOL_SOCKET,
+				SO_REUSEADDR | SO_REUSEPORT, &opt,
+				sizeof(opt))) {
+		perror("setsockopt");
+		exit(EXIT_FAILURE);
+	}
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = INADDR_ANY;
+	address.sin_port = htons(PORT);
+
+	// Forcefully attaching socket to the port 8080
+	if (bind(server_fd, (struct sockaddr*)&address,
+			sizeof(address))
+		< 0) {
+		perror("bind failed");
+		exit(EXIT_FAILURE);
+	}
+	if (listen(server_fd, 3) < 0) {
+		perror("listen");
+		exit(EXIT_FAILURE);
+	}
+	if ((new_socket
+		= accept(server_fd, (struct sockaddr*)&address,
+				(socklen_t*)&addrlen))
+		< 0) {
+		perror("accept");
+		exit(EXIT_FAILURE);
+	}
+	valread = read(new_socket, buffer, 1024);
+	printf("%s\n", buffer);
+	send(new_socket, hello, strlen(hello), 0);
+	printf("Hello message sent\n");
+
+	// closing the connected socket
+	close(new_socket);
+	// closing the listening socket
+	shutdown(server_fd, SHUT_RDWR);
+	return 0;
+}
+```
+
+<br/>
+동작을 하나하나씩 살펴보겠습니다.
+
+```c
+// Creating socket file descriptor
+if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    perror("socket failed");
+    exit(EXIT_FAILURE);
+}
+```
+
+**AF_INET** 는 IPv4 주소 체계를 사용하겠다는 것을 의미하며, SOCK_STREAM 은 TCP를 통해 통신함을, 3번째 인자 0은 IP를 사용하겠다는 것을 의미합니다.
+
+
+
+
+
+
+<br/>
+## References
+
+- [https://www.geeksforgeeks.org/socket-programming-cc/](https://www.geeksforgeeks.org/socket-programming-cc/)
+- [https://www.ibm.com/docs/en/zos/2.3.0?topic=functions-socket-create-socket](https://www.ibm.com/docs/en/zos/2.3.0?topic=functions-socket-create-socket)
+- [https://www.joinc.co.kr/w/Site/Network_Programing/AdvancedComm/SocketOption](https://www.joinc.co.kr/w/Site/Network_Programing/AdvancedComm/SocketOption)
+- [https://techlog.gurucat.net/292](https://techlog.gurucat.net/292)
+- [https://illumos.org/man/3SOCKET/sockaddr_in](https://illumos.org/man/3SOCKET/sockaddr_in)
